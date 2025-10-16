@@ -1,0 +1,57 @@
+<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Admin - DICOM Proxy</title><link rel="stylesheet" href="/static/css/style.css"></head><body><div class="dashboard-container"><aside class="sidebar"><div class="sidebar-header"><h3>DICOM Proxy</h3></div><nav class="menu"><a href="/admin/dashboard/config" class="menu-item {% if 'config' in request.url.path %}active{% endif %}">Configuración</a><a href="/admin/dashboard/logs" class="menu-item {% if 'logs' in request.url.path %}active{% endif %}">Logs</a><a href="/admin/dashboard/security" class="menu-item">Seguridad</a></nav></aside><main class="main-content"><header class="main-header"><h1>Panel de Administración</h1><div class="session-info"><span>Sesión expira en: <span id="session-timer">15:00</span></span><a href="/admin/logout" class="logout-btn">Cerrar Sesión</a></div></header><section class="content">{% block content %}{% endblock %}</section></main></div><div id="confirm-modal-overlay" class="modal-overlay"><div class="modal-box"><h3 id="modal-title">Confirmación</h3><p id="modal-message">¿Estás seguro?</p><div class="modal-buttons"><button id="modal-cancel-btn" class="secondary-btn">Cancelar</button><button id="modal-confirm-btn">Aceptar</button></div></div></div><script src="/static/js/main.js"></script></body></html>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>
+<script>
+window.showConfirmToast = function(aetitle, ip, port, id) {
+    window.pendingDelete = { id, aetitle, ip, port };
+    const toast = document.createElement('div');
+    toast.className = 'toast warn';
+    toast.innerHTML = `
+        <div>
+            <p class="title">⚠️ ¿Eliminar PACS?</p>
+            <p class="msg">
+                AE Title: <b>${aetitle}</b><br>
+                IP: <b>${ip}</b><br>
+                Puerto: <b>${port}</b>
+            </p>
+            <div style="margin-top:6px; display:flex; gap:6px;">
+                <button class="button small danger-btn" onclick="confirmDelete(true)">Sí, eliminar</button>
+                <button class="button small secondary-btn" onclick="confirmDelete(false)">No</button>
+            </div>
+        </div>
+    `;
+    document.getElementById('toast-root').appendChild(toast);
+    setTimeout(() => toast.classList.add('show'), 100);
+};
+
+window.confirmDelete = async function(confirmed) {
+    const { id, aetitle } = window.pendingDelete || {};
+    window.pendingDelete = null;
+    const root = document.getElementById('toast-root');
+    root.innerHTML = '';
+
+    if (!confirmed) {
+        if (window.showToast) showToast(`❎ Eliminación cancelada para ${aetitle}`, "info");
+        return;
+    }
+
+    try {
+        const res = await fetch("/admin/pacs/delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast(`✅ PACS ${aetitle} eliminado correctamente`, "success");
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showToast("Error al eliminar PACS", "error");
+        }
+    } catch (err) {
+        showToast("❌ No se pudo conectar con el servidor", "error");
+    }
+};
+</script>

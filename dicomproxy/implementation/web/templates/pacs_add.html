@@ -1,0 +1,71 @@
+{% extends "dashboard_base.html" %}
+{% block title %}Añadir Nuevo PACS{% endblock %}
+{% block content %}
+<div class="logs-page-container">
+
+    <div class="card">
+        <div class="card-body">
+            <h2 style="font-size: 1.4rem; font-weight: 600; margin-bottom: 1rem;">➕ Añadir Nuevo PACS</h2>
+            
+            <form id="addPacsForm" action="/admin/pacs/add" method="post" style="display:flex; flex-direction:column; gap:12px;">
+                <div>
+                    <label>Descripción</label>
+                    <input type="text" name="description" placeholder="Ej: PACS Principal" required class="input-text">
+                </div>
+
+                <div>
+                    <label>AE Title</label>
+                    <input type="text" name="aetitle" placeholder="Ej: MYPACS" required class="input-text">
+                </div>
+
+                <div style="display:flex; gap:10px;">
+                    <div style="flex:2;">
+                        <label>Dirección IP</label>
+                        <input type="text" name="ip_address" placeholder="Ej: 192.168.1.10" required class="input-text" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$" title="Ingrese una IP válida">
+                    </div>
+                    <div style="flex:1;">
+                        <label>Puerto</label>
+                        <input type="number" name="port" placeholder="Ej: 104" min="1" max="65535" required class="input-text">
+                    </div>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:10px;">
+                    <a href="/admin/dashboard/config" class="button secondary-btn">Cancelar</a>
+                    <button type="submit" class="button">Guardar PACS</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById("addPacsForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const formData = new FormData(form);
+
+    const response = await fetch(form.action, { method: "POST", body: formData });
+
+    if (response.ok) {
+        showToast("✅ Nuevo PACS añadido correctamente", "success");
+        setTimeout(() => window.location.href = "/admin/dashboard/config", 1000);
+    } else {
+        showToast("❌ Error al añadir PACS", "error");
+    }
+});
+
+function showToast(message, type="info") {
+    const root = document.getElementById("toast-root") || (() => {
+        const r = document.createElement("div");
+        r.id = "toast-root";
+        document.body.appendChild(r);
+        return r;
+    })();
+    const toast = document.createElement("div");
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `<span class="title">${message}</span>`;
+    root.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+}
+</script>
+{% endblock %}

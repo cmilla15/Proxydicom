@@ -1,0 +1,352 @@
+{% extends "dashboard_base.html" %}
+{% block content %}
+<div class="page-container">
+  
+  <div class="section-header">
+    <div class="header-title">
+      <span class="header-icon">⚙️</span>
+      <h2>Configuración del Servidor DICOM</h2>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      <form id="localConfigForm" class="config-form">
+        <div class="form-group">
+          <label for="localAET">AE Title Local</label>
+          <input type="text" id="localAET" name="aetitle" required>
+        </div>
+        <div class="form-group">
+          <label for="localPort">Puerto</label>
+          <input type="number" id="localPort" name="port" required>
+        </div>
+        <div class="form-group">
+          <label for="localIP">IP del Servidor</label>
+          <input type="text" id="localIP" name="ip" readonly>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="button primary">Guardar Configuración</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="section-header">
+    <div class="header-title">
+      <span class="header-icon">📡</span>
+      <h2>Conexiones a PACS</h2>
+    </div>
+  </div>
+ <button class="button secondary" id="openAddPacsBtn">+ Añadir Nuevo PACS</button>
+  <div class="card">
+    <div class="card-body">
+      <div class="table-container">
+        <table id="pacsTable" class="pacs-table">
+          <thead>
+            <tr>
+              <th scope="col">Descripción</th>
+              <th scope="col">AE Title</th>
+              <th scope="col">IP / Puerto</th>
+              <th scope="col">Estado</th>
+              <th scope="col">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for pacs in pacs_list %}
+            <tr>
+              <td>{{ pacs["description"] }}</td>
+              <td>{{ pacs["aetitle"] }}</td>
+              <td>{{ pacs["ip_address"] }} : {{ pacs["port"] }}</td>
+              <td>
+                {% if pacs["is_active"] %}
+                  <span class="badge success">Activo</span>
+                {% else %}
+                  <span class="badge inactive">Inactivo</span>
+                {% endif %}
+              </td>
+              <td>
+                <div class="action-buttons">
+                  <button class="button small info echo-btn" data-id="{{ pacs.id }}" data-aetitle="{{ pacs.aetitle }}">
+                    Verificar
+                  </button>
+                  <button class="button small toggle-btn" data-id="{{ pacs.id }}" data-aetitle="{{ pacs.aetitle }}" data-active="{{ pacs.is_active|int }}">
+                    {{ 'Desactivar' if pacs.is_active else 'Activar' }}
+                  </button>
+                  <button class="button small danger delete-btn" data-id="{{ pacs.id }}" data-aetitle="{{ pacs.aetitle }}" data-ip="{{ pacs.ip_address }}" data-port="{{ pacs.port }}">
+                    Eliminar
+                  </button>
+                </div>
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="5" class="empty-table-message">No hay conexiones a PACS configuradas.</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-root"></div>
+
+<style>
+:root {
+  --color-primary: #2563eb; --color-primary-dark: #1d4ed8; --color-info: #0ea5e9;
+  --color-danger: #dc2626; --color-danger-dark: #b91c1c; --color-success: #16a34a;
+  --color-gray-100: #f3f4f6; --color-gray-200: #e5e7eb; --color-gray-500: #6b7280;
+  --color-gray-700: #374151; --color-gray-800: #1f2937; --color-bg: #f9fafb;
+  --shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+body { background-color: var(--color-bg); }
+.page-container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+.section-header { display: flex; align-items: center; margin-bottom: 1.25rem; margin-top: 3rem; gap: 1rem; }
+.section-header:first-of-type { margin-top: 0; }
+.header-title { display: flex; align-items: center; gap: 0.75rem; }
+.header-title h2 { margin: 0; font-size: 1.5rem; font-weight: 600; color: var(--color-gray-800); }
+.header-icon { font-size: 26px; color: var(--color-primary); }
+.card { background-color: #ffffff; border-radius: 0.75rem; box-shadow: var(--shadow); border: 1px solid var(--color-gray-200); }
+.card-body { padding: 2rem; }
+.config-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; }
+.form-group { display: flex; flex-direction: column; }
+.form-group label { margin-bottom: 0.5rem; font-weight: 500; color: var(--color-gray-700); font-size: 0.875rem; }
+.form-group input { padding: 0.6rem 0.8rem; border: 1px solid var(--color-gray-200); border-radius: 0.5rem; font-size: 1rem; transition: border-color 0.2s, box-shadow 0.2s; }
+.form-group input:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2); }
+.form-group input[readonly] { background-color: var(--color-gray-100); cursor: not-allowed; }
+.form-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; margin-top: 1rem; }
+.button { display: inline-flex; align-items: center; justify-content: center; padding: 0.6rem 1.2rem; border: none; border-radius: 0.5rem; font-weight: 600; cursor: pointer; transition: background-color 0.2s, box-shadow 0.2s, color 0.2s, border-color 0.2s; text-align: center; white-space: nowrap; }
+#openAddPacsBtn { margin-left: auto; }
+.button.primary { background-color: var(--color-primary); color: white; }
+.button.primary:hover { background-color: var(--color-primary-dark); }
+.button.secondary { background-color: var(--color-gray-700); color: white; padding: 0.5rem 1rem; font-size: 0.9rem; }
+.button.secondary:hover { background-color: var(--color-gray-800); }
+.button.small { padding: 0.35rem 0.75rem; font-size: 0.875rem; font-weight: 500; background-color: #fff; color: var(--color-gray-700); border: 1px solid var(--color-gray-200); }
+.button.small:hover { background-color: var(--color-gray-100); }
+.button.small.info { border-color: var(--color-info); color: var(--color-info); }
+.button.small.info:hover { background-color: var(--color-info); color: white; }
+.button.small.danger { border-color: var(--color-danger); color: var(--color-danger); background-color: #fff; }
+.button.small.danger:hover { background-color: var(--color-danger); color: white; }
+
+/* ===== CAMBIO 1: AJUSTE DE SCROLL ===== */
+.table-container { max-height: 250px; overflow-y: auto; border: 1px solid var(--color-gray-200); border-radius: 0.75rem; position: relative; }
+
+.pacs-table { width: 100%; border-collapse: collapse; }
+.pacs-table th, .pacs-table td { padding: 0.9rem 1.2rem; border-bottom: 1px solid var(--color-gray-200); text-align: left; vertical-align: middle; }
+.pacs-table thead th { position: sticky; top: 0; background-color: #f9fafb; z-index: 10; font-weight: 600; color: var(--color-gray-500); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; border-bottom: 2px solid var(--color-gray-200); }
+.pacs-table tbody tr:last-child td { border-bottom: none; }
+.pacs-table tbody tr:hover { background-color: var(--color-gray-100); }
+.empty-table-message { text-align: center; padding: 2.5rem 1rem; color: var(--color-gray-500); font-style: italic; }
+
+/* ===== CAMBIO 2: BOTONES HORIZONTALES ===== */
+.action-buttons { display: flex; gap: 0.5rem; flex-wrap: nowrap; }
+
+.badge { padding: 0.25rem 0.6rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; text-transform: capitalize; }
+.badge.success { background-color: #dcfce7; color: #166534; }
+.badge.inactive { background-color: #fee2e2; color: #991b1b; }
+.dp-modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(5px);display:flex;align-items:center;justify-content:center;z-index:9998;opacity:0;transition:opacity .25s ease}.dp-modal-backdrop.show{opacity:1}.dp-modal{background:linear-gradient(180deg,#0f172a 0%,#1e293b 100%);color:#f9fafb;border-radius:12px;width:min(420px,95%);box-shadow:0 10px 40px rgba(0,0,0,0.5);overflow:hidden;animation:fadeIn .25s ease-out;border:1px solid rgba(255,255,255,0.1)}@keyframes fadeIn{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}.dp-modal-header{padding:14px 18px;font-weight:600;background:rgba(255,255,255,0.08);border-bottom:1px solid rgba(255,255,255,0.1)}.dp-modal-body{padding:25px 35px;font-size:15px;line-height:1.45}.dp-modal-body .form-group{margin-bottom:1rem;}.dp-modal-body .form-group label{font-size:14px;margin-bottom:0.4rem;display:block;}.dp-modal-actions{display:flex;justify-content:space-around;padding:14px 20px;border-top:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04)}.dp-btn{border:none;border-radius:8px;padding:8px 22px;cursor:pointer;font-weight:600;transition:all .2s ease}.dp-btn-primary{background:#2563eb;color:#fff;box-shadow:0 2px 8px rgba(37,99,235,0.4)}.dp-btn-primary:hover{background:#1d4ed8}.dp-btn-ghost{background:#e5e7eb;color:#111}.dp-btn-ghost:hover{background:#d1d5db}.input-text{background:#f9fafb;color:#111;border:1px solid #cbd5e1;border-radius:6px;padding:8px 10px;font-size:15px;width:100%;box-sizing:border-box;}.input-text:focus{outline:2px solid #2563eb;border-color:#2563eb}
+</style>
+
+<script>
+function showToast(msg, type='info', dur=3000){const root=document.getElementById("toast-root")||document.body;const t=document.createElement('div');t.className=`toast ${type}`;t.innerHTML=`<div class="title">${type==='success'?'✅ Éxito':type==='error'?'❌ Error':type==='warn'?'⚠️ Atención':'ℹ️ Info'}</div><div class="msg">${msg}</div>`;Object.assign(t.style,{background:'#fff',color:'#111',borderLeft:`6px solid ${type==='success'?'#16a34a':type==='error'?'#b91c1c':type==='warn'?'#f59e0b':'#2563eb'}`,padding:'10px 14px',borderRadius:'8px',minWidth:'260px',boxShadow:'0 3px 10px rgba(0,0,0,0.2)',marginTop:'10px',opacity:'0',transform:'translateY(10px)',transition:'all .25s ease',position:'fixed',bottom:'20px',right:'20px',zIndex:'99999'});root.appendChild(t);requestAnimationFrame(()=>{t.style.opacity='1';t.style.transform='translateY(0)';});setTimeout(()=>{t.style.opacity='0';t.style.transform='translateY(10px)';t.addEventListener('transitionend',()=>t.remove(),{once:true});},dur);}
+const TOAST_KEY='dicomproxy.config.toast';function persistToast(msg,type){sessionStorage.setItem(TOAST_KEY,JSON.stringify({msg,type:type||'info',exp:Date.now()+15000}));}
+function popPersistedToast(){const raw=sessionStorage.getItem(TOAST_KEY);if(!raw)return;sessionStorage.removeItem(TOAST_KEY);const d=JSON.parse(raw||'{}');if(!d.msg||d.exp<Date.now())return;showToast(d.msg,d.type);}
+function showNiceConfirm(message,title='Confirmación'){return new Promise((resolve)=>{const b=document.createElement('div');b.className='dp-modal-backdrop';b.innerHTML=`<div class="dp-modal"><div class="dp-modal-header">${title}</div><div class="dp-modal-body">${message}</div><div class="dp-modal-actions"><button class="dp-btn dp-btn-ghost" id="no">Cancelar</button><button class="dp-btn dp-btn-primary" id="yes">Aceptar</button></div></div>`;document.body.appendChild(b);requestAnimationFrame(()=>b.classList.add('show'));const cleanup=(r)=>{b.classList.remove('show');b.addEventListener('transitionend',()=>b.remove(),{once:true});setTimeout(()=>resolve(r),250);};b.querySelector('#no').onclick=()=>cleanup(false);b.querySelector('#yes').onclick=()=>cleanup(true);b.addEventListener('click',e=>{if(e.target===b)cleanup(false)});});}
+
+async function writeLog(message) {
+    try {
+        await fetch('/admin/logs/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: `[CONFIG-UI] ${message}` })
+        });
+    } catch (err) {
+        console.error("Fallo al escribir en el log:", err);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  popPersistedToast();
+  (async () => {
+    try {
+      const response = await fetch('/config/local');
+      const data = await response.json();
+      if (data && !data.error) {
+        document.getElementById('localAET').value = data.aetitle || '';
+        document.getElementById('localPort').value = data.port || '';
+        document.getElementById('localIP').value = data.ip || '';
+      }
+    } catch (err) {
+      console.error("Error fetching local config:", err);
+      showToast('No se pudo cargar la configuración local', 'error');
+    }
+  })();
+  bindActions();
+});
+
+function bindActions() {
+    const localConfigForm = document.getElementById('localConfigForm');
+    const pacsTable = document.getElementById('pacsTable');
+
+    localConfigForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const ok = await showNiceConfirm('¿Deseas guardar los cambios en la configuración local?', 'Guardar Configuración').catch(() => false);
+        if (!ok) {
+            await writeLog('CANCELADO: Guardado de configuración local.');
+            return showToast('Guardado cancelado', 'warn');
+        }
+        const formData = new FormData(localConfigForm);
+        try {
+            const response = await fetch('/config/local', { method: 'POST', body: formData });
+            const data = await response.json();
+            if (data.success) {
+                await writeLog(`ÉXITO: Configuración actualizada — AE: ${data.config.aetitle}, Puerto: ${data.config.port}`);
+                persistToast('Configuración guardada correctamente', 'success');
+                location.reload();
+            } else {
+                await writeLog(`ERROR: No se pudo guardar la configuración. Razón: ${data.error || 'Desconocida'}`);
+                showToast(data.error || 'Error al guardar configuración', 'error');
+            }
+        } catch (err) {
+            await writeLog(`ERROR DE RED: Fallo al guardar configuración. ${err.message}`);
+            showToast('Error de conexión al guardar.', 'error');
+        }
+    });
+
+    pacsTable.addEventListener('click', async (event) => {
+        const echoBtn = event.target.closest('.echo-btn');
+        const toggleBtn = event.target.closest('.toggle-btn');
+        const deleteBtn = event.target.closest('.delete-btn');
+
+        if (echoBtn) {
+            const { id, aetitle } = echoBtn.dataset;
+            showToast(`Verificando conexión con ${aetitle}...`, 'info');
+            await writeLog(`INFO: Iniciando DICOM Echo para ${aetitle} (ID: ${id})`);
+            try {
+                const response = await fetch('/admin/pacs/echo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+                const data = await response.json();
+                if (data.success) {
+                    showToast(`✅ Conexión con ${aetitle} exitosa`, 'success');
+                    await writeLog(`ÉXITO: DICOM Echo para ${aetitle} fue exitoso.`);
+                } else {
+                    showToast(`❌ Falló la conexión con ${aetitle}: ${data.message}`, 'error', 5000);
+                    await writeLog(`ERROR: DICOM Echo para ${aetitle} falló. Razón: ${data.message}`);
+                }
+            } catch (err) {
+                showToast('Error de red al intentar la verificación.', 'error');
+                await writeLog(`ERROR DE RED: Fallo en DICOM Echo para ${aetitle}. ${err.message}`);
+            }
+        }
+
+        if (toggleBtn) {
+            const { id, aetitle, active } = toggleBtn.dataset;
+            const isActive = Number(active);
+            const actionText = isActive ? 'desactivar' : 'activar';
+            const ok = await showNiceConfirm(`¿Deseas ${actionText} el PACS ${aetitle}?`, `${isActive ? 'Desactivar' : 'Activar'} PACS`).catch(() => false);
+            if (!ok) {
+                await writeLog(`CANCELADO: Cambio de estado para ${aetitle}.`);
+                return showToast('Acción cancelada', 'warn');
+            }
+            try {
+                const response = await fetch('/admin/pacs/toggle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+                const data = await response.json();
+                if (data.success) {
+                    await writeLog(`ÉXITO: PACS ${aetitle} fue ${isActive ? 'desactivado' : 'activado'}.`);
+                    persistToast(`PACS ${aetitle} ${isActive ? 'desactivado' : 'activado'}`, 'success');
+                    location.reload();
+                } else {
+                    await writeLog(`ERROR: No se pudo ${actionText} ${aetitle}. Razón: ${data.error || 'Desconocida'}`);
+                    showToast(data.error || `Error al ${actionText} PACS`, 'error');
+                }
+            } catch (err) {
+                await writeLog(`ERROR DE RED: Fallo al ${actionText} ${aetitle}. ${err.message}`);
+                showToast('Error de conexión al actualizar.', 'error');
+            }
+        }
+
+        if (deleteBtn) {
+            const { id, aetitle, ip, port } = deleteBtn.dataset;
+            const ok = await showNiceConfirm(`¿Seguro que quieres eliminar el PACS <strong>${aetitle}</strong> (${ip}:${port})?`, 'Eliminar PACS').catch(() => false);
+            if (!ok) {
+                await writeLog(`CANCELADO: Eliminación de ${aetitle}.`);
+                return showToast('Eliminación cancelada', 'warn');
+            }
+            try {
+                const response = await fetch('/admin/pacs/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+                const data = await response.json();
+                if (data.success) {
+                    await writeLog(`ÉXITO: PACS ${aetitle} eliminado.`);
+                    persistToast(`PACS ${aetitle} eliminado correctamente`, 'success');
+                    location.reload();
+                } else {
+                    await writeLog(`ERROR: No se pudo eliminar ${aetitle}. Razón: ${data.error || 'Desconocida'}`);
+                    showToast(data.error || 'Error al eliminar PACS', 'error');
+                }
+            } catch (err) {
+                await writeLog(`ERROR DE RED: Fallo al eliminar ${aetitle}. ${err.message}`);
+                showToast('Error de conexión al eliminar.', 'error');
+            }
+        }
+    });
+    
+    document.getElementById('openAddPacsBtn').onclick = () => {
+        const backdrop = document.createElement('div');
+        backdrop.className = 'dp-modal-backdrop';
+        backdrop.innerHTML = `
+            <div class="dp-modal">
+                <div class="dp-modal-header">➕ Añadir Nuevo PACS</div>
+                <div class="dp-modal-body">
+                    <div class="form-group"><label for="newDesc">Descripción</label><input id="newDesc" class="input-text" type="text" placeholder="Ej: PACS Principal del Hospital"></div>
+                    <div class="form-group"><label for="newAET">AE Title</label><input id="newAET" class="input-text" type="text" placeholder="AE_TITLE_PACS"></div>
+                    <div class="form-group"><label for="newIP">Dirección IP</label><input id="newIP" class="input-text" type="text" placeholder="192.168.1.100"></div>
+                    <div class="form-group"><label for="newPort">Puerto</label><input id="newPort" class="input-text" type="number" placeholder="104"></div>
+                </div>
+                <div class="dp-modal-actions">
+                    <button class="dp-btn dp-btn-ghost" id="cancelAdd">Cancelar</button>
+                    <button class="dp-btn dp-btn-primary" id="saveNewPacs">Añadir</button>
+                </div>
+            </div>`;
+        document.body.appendChild(backdrop);
+        requestAnimationFrame(() => backdrop.classList.add('show'));
+        const cleanup = () => {
+            backdrop.classList.remove('show');
+            backdrop.addEventListener('transitionend', () => backdrop.remove(), { once: true });
+        };
+        backdrop.querySelector('#cancelAdd').onclick = async () => {
+            cleanup();
+            await writeLog('CANCELADO: Creación de nuevo PACS.');
+            showToast('Acción cancelada', 'warn');
+        };
+        backdrop.querySelector('#saveNewPacs').onclick = async () => {
+            const desc = backdrop.querySelector('#newDesc').value.trim();
+            const aet = backdrop.querySelector('#newAET').value.trim();
+            const ip = backdrop.querySelector('#newIP').value.trim();
+            const port = backdrop.querySelector('#newPort').value;
+            if (!desc || !aet || !ip || !port) return showToast('Todos los campos son obligatorios', 'error');
+            try {
+                const formData = new FormData();
+                formData.append('description', desc);
+                formData.append('aetitle', aet);
+                formData.append('ip_address', ip);
+                formData.append('port', port);
+                const response = await fetch('/admin/pacs/add', { method: 'POST', body: formData });
+                if (response.ok) {
+                    await writeLog(`ÉXITO: Nuevo PACS añadido — AE: ${aet}, IP: ${ip}, Puerto: ${port}`);
+                    persistToast('PACS añadido correctamente', 'success');
+                    location.reload();
+                } else {
+                    const errorData = await response.json().catch(() => ({ error: 'Respuesta inválida del servidor' }));
+                    await writeLog(`ERROR: No se pudo añadir nuevo PACS. Razón: ${errorData.error || 'Desconocida'}`);
+                    showToast(errorData.error || 'Error al añadir PACS', 'error');
+                }
+            } catch (err) {
+                await writeLog(`ERROR DE RED: Fallo al añadir nuevo PACS. ${err.message}`);
+                showToast('Error de conexión', 'error');
+            }
+        };
+    };
+}
+</script>
+{% endblock %}

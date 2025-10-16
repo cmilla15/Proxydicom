@@ -1,0 +1,142 @@
+{% extends "dashboard_base.html" %}
+{% block content %}
+<div class="logs-page-container">
+    <div class="logs-header header-with-action">
+        <h2>Visor de Logs del Sistema</h2>
+        <div class="header-buttons">
+            <a href="/admin/dashboard/logs" id="goto-actual-log-btn" class="button secondary-btn">Ir al Log Actual</a>
+            <form id="rotate-log-form" action="/admin/logs/rotate" method="post" style="display: inline;"><button type="submit" class="button">Crear Nuevo Log</button></form>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-body">
+            <form class="log-filters" id="log-filter-form" method="get" action="/admin/dashboard/logs">
+                <div class="filter-group"><label>Archivo de Log</label><select id="log-file-select" name="file">{% for file in log_files %}<option value="{{ file }}" {% if file == selected_file %}selected{% endif %} {% if 'Actual' in file %}class="actual-log-option"{% endif %}>{{ file }}</option>{% endfor %}</select></div>
+                <div class="filter-group"><label>Nivel</label><select id="log-level-select" name="level"><option value="ALL">Todos</option><option value="INFO">Info</option><option value="WARNING">Warning</option><option value="ERROR">Error</option></select></div>
+                <div class="filter-group filter-search"><label>Buscar</label><input type="text" name="search" placeholder="Texto a buscar..." value="{{ search_query or '' }}"></div>
+                <div class="filter-group"><button type="submit">Aplicar Filtros</button></div>
+                <div class="filter-group search-nav"><button type="button" id="search-prev-btn" disabled>&lt;</button><span id="search-counter">0 / 0</span><button type="button" id="search-next-btn" disabled>&gt;</button></div>
+            </form>
+            <div class="log-table-container">
+                <table class="log-table">
+                    <thead><tr><th>Timestamp</th><th>Nivel</th><th>Mensaje</th></tr></thead>
+                    <tbody>
+                        {% for log in logs %}
+                        <tr class="log-level-{{ log.level | lower }}">
+                            <td>{{ log.timestamp }}</td>
+                            <td><span class="log-level-badge">{{ log.level }}</span></td>
+                            <td><pre><code>{{ log.message | safe }}</code></pre></td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3">No se encontraron entradas de log.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- MÓDULO 1: TOAST ---
+    function showToast(message, type = 'success') {
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        setTimeout(() => { toast.classList.add('show'); }, 100);
+        setTimeout(() => { toast.classList.remove('show'); toast.addEventListener('transitionend', () => toast.remove()); }, 3000);
+    }
+
+    // --- MÓDULO 2: MODAL DE CONFIRMACIÓN ---
+    function showConfirmationModal(message) {
+        return new Promise((resolve, reject) => {
+            const modal = document.getElementById('confirm-modal-overlay');
+            if (!modal) { if (confirm(message)) { resolve(true); } else { reject(false); } return; }
+            modal.querySelector('#modal-message').textContent = message;
+            modal.classList.add('show');
+            modal.querySelector('#modal-confirm-btn').onclick = () => { modal.classList.remove('show'); resolve(true); };
+            modal.querySelector('#modal-cancel-btn').onclick = () => { modal.classList.remove('show'); reject(false); };
+        });
+    }
+
+    // --- MÓDULO 3: NAVEGACIÓN DE BÚSQUEDA ---
+    window.onload = () => {
+        const searchResults = document.querySelectorAll('.log-table mark');
+        const counterElement = document.getElementById('search-counter');
+        const prevBtn = document.getElementById('search-prev-btn');
+        const nextBtn = document.getElementById('search-next-btn');
+        let currentSearchIndex = -1;
+        if (!counterElement || !prevBtn || !nextBtn) return;
+        counterElement.textContent = `0 / ${searchResults.length}`;
+        if (searchResults.length === 0) { prevBtn.disabled = true; nextBtn.disabled = true; return; }
+        prevBtn.disabled = false; nextBtn.disabled = false;
+        const navigate = (direction) => {
+            if (currentSearchIndex > -1) searchResults[currentSearchIndex].classList.remove('current-match');
+            currentSearchIndex += direction;
+            if (currentSearchIndex >= searchResults.length) currentSearchIndex = 0;
+            if (currentSearchIndex < 0) currentSearchIndex = searchResults.length - 1;
+            const currentElement = searchResults[currentSearchIndex];
+            currentElement.classList.add('current-match');
+            currentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            counterElement.textContent = `${currentSearchIndex + 1} / ${searchResults.length}`;
+        };
+        nextBtn.onclick = () => navigate(1);
+        prevBtn.onclick = () => navigate(-1);
+    };
+
+    // --- MANEJADORES DE EVENTOS ASÍNCRONOS ---
+    
+    // 1. Botón "Crear Nuevo Log"
+    const rotateForm = document.getElementById('rotate-log-form');
+    if (rotateForm) {
+        rotateForm.addEventListener('submit', async function(event) {
+            event.preventDefault();
+            try {
+                await showConfirmationModal('¿Estás seguro de que quieres archivar el log actual y crear uno nuevo?');
+                const response = await fetch(event.target.action, { method: 'POST' });
+                if (!response.ok) throw new Error('Falló la respuesta del servidor.');
+                // La respuesta del servidor es una redirección con el toast en la URL
+                window.location.href = response.url;
+            } catch {
+                showToast('Operación cancelada.', 'info');
+            }
+        });
+    }
+
+    // 2. Botón "Aplicar Filtros"
+    const filterForm = document.getElementById('log-filter-form');
+    if (filterForm) {
+        filterForm.addEventListener('submit', function(event) {
+            event.preventDefault();
+            showToast('Aplicando filtros...', 'info');
+            const params = new URLSearchParams(new FormData(event.target));
+            // Hacemos una pausa de 10ms para que el toast sea visible antes de recargar
+            setTimeout(() => {
+                window.location.href = `${event.target.action}?${params.toString()}`;
+            }, 10);
+        });
+    }
+
+    // 3. Botón "Ir al Log Actual"
+    const actualLogBtn = document.getElementById('goto-actual-log-btn');
+    if (actualLogBtn) {
+        actualLogBtn.addEventListener('click', function(event) {
+            event.preventDefault();
+            showToast('Cargando el log actual...', 'info');
+            setTimeout(() => {
+                window.location.href = event.target.href;
+            }, 10);
+        });
+    }
+
+    // 4. Cambios en los menús desplegables
+    ['log-file-select', 'log-level-select'].forEach(id => {
+        const select = document.getElementById(id);
+        if (select) {
+            select.addEventListener('change', () => filterForm.requestSubmit());
+        }
+    });
+
+</script>
+{% endblock %}

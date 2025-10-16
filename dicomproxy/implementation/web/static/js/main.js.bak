@@ -1,0 +1,160 @@
+document.addEventListener('DOMContentLoaded', () => {
+
+    // --- LÓGICA PARA NOTIFICACIONES TOAST ---
+    function showToast(message, type = 'success') {
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        setTimeout(() => { toast.classList.add('show'); }, 100);
+        setTimeout(() => {
+            toast.classList.remove('show');
+            toast.addEventListener('transitionend', () => toast.remove());
+        }, 3000);
+    }
+
+    // --- LÓGICA PARA EL CONTADOR DE SESIÓN ---
+    let sessionIntervalId = null;
+    function startSessionTimer() {
+        const timerElement = document.getElementById('session-timer');
+        if (!timerElement) return;
+        if (sessionIntervalId) clearInterval(sessionIntervalId);
+        let timeLeft = 15 * 60;
+        sessionIntervalId = setInterval(() => {
+            timeLeft--;
+            const minutes = Math.floor(timeLeft / 60).toString().padStart(2, '0');
+            const seconds = (timeLeft % 60).toString().padStart(2, '0');
+            timerElement.textContent = `${minutes}:${seconds}`;
+            if (timeLeft <= 0) {
+                clearInterval(sessionIntervalId);
+                showToast('La sesión ha expirado.', 'error');
+                window.location.href = '/admin';
+            }
+        }, 1000);
+    }
+
+    // --- LÓGICA DE NAVEGACIÓN DE BÚSQUEDA ---
+    function initSearchNavigation() {
+        const contentArea = document.getElementById('dashboard-content');
+        if (!contentArea) return;
+
+        const searchResults = contentArea.querySelectorAll('.log-table mark');
+        const counterElement = document.getElementById('search-counter');
+        const prevBtn = document.getElementById('search-prev-btn');
+        const nextBtn = document.getElementById('search-next-btn');
+        let currentSearchIndex = -1;
+
+        if (!counterElement || !prevBtn || !nextBtn) return;
+
+        counterElement.textContent = `0 / ${searchResults.length}`;
+
+        if (searchResults.length === 0) {
+            prevBtn.disabled = true;
+            nextBtn.disabled = true;
+            return;
+        }
+
+        prevBtn.disabled = false;
+        nextBtn.disabled = false;
+
+        const navigate = (direction) => {
+            if (searchResults[currentSearchIndex]) {
+                searchResults[currentSearchIndex].classList.remove('current-match');
+            }
+            currentSearchIndex += direction;
+            if (currentSearchIndex >= searchResults.length) { currentSearchIndex = 0; }
+            if (currentSearchIndex < 0) { currentSearchIndex = searchResults.length - 1; }
+            
+            const currentElement = searchResults[currentSearchIndex];
+            currentElement.classList.add('current-match');
+            currentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            counterElement.textContent = `${currentSearchIndex + 1} / ${searchResults.length}`;
+        };
+
+        nextBtn.onclick = () => navigate(1);
+        prevBtn.onclick = () => navigate(-1);
+    }
+
+    // --- LÓGICA PRINCIPAL DE LA PÁGINA ---
+    const menuItems = document.querySelectorAll('.menu-item');
+    const contentArea = document.getElementById('dashboard-content');
+
+    const loadContent = async (page, params = null) => {
+        if (!contentArea) return;
+        contentArea.innerHTML = '<p>Cargando...</p>';
+        let url = `/admin/dashboard/${page}`;
+        if (params) { url += `?${params.toString()}`; }
+
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`Error ${response.status}`);
+            contentArea.innerHTML = await response.text();
+            if (page === 'logs') {
+                initSearchNavigation();
+            }
+        } catch (error) {
+            contentArea.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+        }
+    };
+
+    // --- MANEJADORES DE EVENTOS ---
+
+    // 1. Clics en el menú de navegación
+    menuItems.forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            menuItems.forEach(i => i.classList.remove('active'));
+            item.classList.add('active');
+            loadContent(item.getAttribute('data-page'));
+        });
+    });
+
+    // 2. Envío del formulario de filtros (botón "Aplicar Filtros" o Enter)
+    contentArea.addEventListener('submit', (event) => {
+        if (event.target.id === 'log-filter-form') {
+            event.preventDefault();
+            const params = new URLSearchParams(new FormData(event.target));
+            loadContent('logs', params);
+            showToast('Filtros aplicados', 'info');
+        }
+    });
+
+    // 3. Cambios en los menús desplegables de los filtros
+    contentArea.addEventListener('change', (event) => {
+        if (event.target.matches('#log-file, #log-level')) {
+            const form = document.getElementById('log-filter-form');
+            if (form) form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+        }
+    });
+
+    // 4. Clics en botones de acción (como "Crear Nuevo Log")
+    contentArea.addEventListener('click', async (event) => {
+        if (event.target.id === 'rotate-log-btn') {
+            event.preventDefault();
+            if (!confirm('¿Estás seguro de que quieres archivar el log actual y crear uno nuevo?')) return;
+            try {
+                const response = await fetch('/admin/logs/rotate', { method: 'POST' });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message || 'Error desconocido');
+                showToast(result.message, 'success');
+                loadContent('logs'); // Recarga la vista de logs
+            } catch (error) {
+                showToast(`Error: ${error.message}`, 'error');
+            }
+        }
+    });
+
+    // Iniciar el temporizador de sesión
+    startSessionTimer();
+    // Cargar la página de configuración por defecto al entrar
+    loadContent('config');
+});
+
+    // 5. Clic en el botón "Ir al Log Actual"
+    contentArea.addEventListener('click', async (event) => {
+        if (event.target.id === 'goto-actual-log-btn') {
+            event.preventDefault();
+            showToast('Cargando el log actual...', 'info');
+            loadContent('logs'); // Carga la página de logs sin parámetros, usará el default del backend
+        }
+    });

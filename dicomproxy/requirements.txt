@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+pydicom
+pynetdicom
+loguru
+python-dotenv
+jinja2
+python-multipart
+python-jose[cryptography]
+passlib
+# CAMBIO: Se reemplaza bcrypt con argon2-cffi
+argon2-cffi

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Visor de Logs del Sistema</title>
+  <style>
+    :root{
+      --bg:#0f1115;--fg:#e6e6e6;--muted:#98a2b3;--card:#151922;--border:#223045;
+      --accent:#5b9cf6;--accent-ink:#0b1020;--danger:#ef5350;--ok:#22c55e;--warn:#f59e0b;
+      --row:#0f1522;--row-alt:#111827;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif}
+    a{color:var(--accent);text-decoration:none}
+    .container{max-width:1200px;margin:32px auto;padding:0 16px}
+    h1{margin:0 0 12px 0;font-size:24px}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.25)}
+    .card-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+    .card-title{margin:0;font-size:18px}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap}
+    .btn{appearance:none;border:1px solid var(--border);background:transparent;color:var(--fg);padding:8px 12px;border-radius:10px;cursor:pointer}
+    .btn:hover{border-color:var(--accent)}
+    .btn-primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+    .btn-danger{background:var(--danger);border-color:var(--danger);color:#0b0b0b}
+    .btn-ghost{background:transparent}
+    .filters{display:grid;grid-template-columns:280px 200px 1fr auto auto;gap:12px;align-items:end}
+    .field{display:flex;flex-direction:column;gap:6px}
+    .label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+    select,input[type="text"]{background:#0e1420;color:var(--fg);border:1px solid var(--border);border-radius:10px;padding:10px 12px;outline:none}
+    select:focus,input[type="text"]:focus{border-color:var(--accent)}
+    .table-wrap{overflow:auto}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+    th{font-weight:600;text-align:left;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-size:12px}
+    tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+    .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px}
+    .badge.info{background:rgba(59,130,246,.15);border:1px solid #1e40af;color:#93c5fd}
+    .badge.warn{background:rgba(245,158,11,.15);border:1px solid #7c4410;color:#fcd34d}
+    .badge.error{background:rgba(239,68,68,.15);border:1px solid #7f1d1d;color:#fca5a5}
+    .pager{display:flex;align-items:center;gap:10px}
+    .pager .btn{min-width:42px}
+
+    /* Toasts */
+    #toast-root{position:fixed;right:18px;top:18px;display:flex;flex-direction:column;gap:10px;z-index:9999}
+    .toast{min-width:260px;max-width:420px;padding:10px 12px;border-radius:12px;border:1px solid var(--border);background:#111827;box-shadow:0 10px 30px rgba(0,0,0,.35);display:flex;gap:10px;align-items:flex-start;opacity:0;transform:translateY(-8px);animation:toast-in .2s ease-out forwards}
+    .toast.info{border-color:#1e40af}
+    .toast.success{border-color:#14532d}
+    .toast.warn{border-color:#7c2d12}
+    .toast.error{border-color:#7f1d1d}
+    .toast .title{font-weight:600;margin:0 0 2px 0}
+    .toast .msg{margin:0;color:#cbd5e1}
+    .toast .close{margin-left:auto;background:transparent;border:0;color:#9ca3af;cursor:pointer}
+    @keyframes toast-in{to{opacity:1;transform:translateY(0)}}
+    @keyframes toast-out{to{opacity:0;transform:translateY(-6px)}}
+  </style>
+</head>
+<body>
+  <div id="toast-root" aria-live="polite" aria-atomic="true"></div>
+
+  <div class="container">
+    <h1>Visor de Logs del Sistema</h1>
+
+    <section class="card" style="margin-bottom:16px;">
+      <div class="card-header">
+        <h2 class="card-title">Controles</h2>
+        <div class="toolbar">
+          <button id="btn-go-current" class="btn btn-primary" type="button" data-href="{{ url_for('admin.logs_current') }}">Ir al Log Actual</button>
+          <a class="btn" href="{{ url_for('admin.logs_new') }}">Crear Nuevo Log</a>
+        </div>
+      </div>
+
+      <div class="card-header" style="border-bottom:0">
+        <form id="filters-form" class="filters" method="get" action="{{ url_for('admin.logs') }}">
+          <div class="field">
+            <label class="label" for="log_file">Archivo de Log</label>
+            <select id="log_file" name="log_file">
+              {% for f in log_files %}
+                <option value="{{ f }}" {% if f == selected_log_file %}selected{% endif %}>{{ f }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="field">
+            <label class="label" for="level">Nivel</label>
+            <select id="level" name="level">
+              {% for lv in ['Todos','DEBUG','INFO','WARNING','ERROR','CRITICAL'] %}
+                <option value="{{ lv }}" {% if lv == selected_level %}selected{% endif %}>{{ lv }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="field">
+            <label class="label" for="q">Buscar</label>
+            <input id="q" name="q" type="text" placeholder="Texto a buscar..." value="{{ search_query or '' }}" />
+          </div>
+
+          <button id="btn-apply" class="btn btn-primary" type="submit">Aplicar Filtros</button>
+
+          <div class="pager">
+            <button class="btn" name="prev" value="1" {% if not has_prev %}disabled{% endif %}>&lt;</button>
+            <span>{{ page or 1 }} / {{ pages or 1 }}</span>
+            <button class="btn" name="next" value="1" {% if not has_next %}disabled{% endif %}>&gt;</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="table-wrap">
+        <table aria-label="Resultados del log">
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Nivel</th>
+              <th>Mensaje</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if entries and entries|length > 0 %}
+              {% for e in entries %}
+              <tr>
+                <td style="white-space:nowrap">{{ e.timestamp }}</td>
+                <td>
+                  {% if e.level in ['ERROR','CRITICAL'] %}
+                    <span class="badge error">{{ e.level }}</span>
+                  {% elif e.level in ['WARNING','WARN'] %}
+                    <span class="badge warn">{{ e.level }}</span>
+                  {% else %}
+                    <span class="badge info">{{ e.level }}</span>
+                  {% endif %}
+                </td>
+                <td><pre style="margin:0;white-space:pre-wrap">{{ e.message }}</pre></td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr><td colspan="3" style="color:var(--muted);padding:18px;">No hay resultados para los filtros aplicados.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script>
+  (function(){
+    console.log("🟢 logs.html JS cargado correctamente");
+    const selFile=document.getElementById("log_file");
+    const selLevel=document.getElementById("level");
+    const inputQ=document.getElementById("q");
+    const btnApply=document.getElementById("btn-apply");
+    const btnGoCurrent=document.getElementById("btn-go-current");
+    console.log("Elementos:", {selFile,selLevel,inputQ,btnApply,btnGoCurrent});
+    [selFile,selLevel,inputQ,btnApply,btnGoCurrent].forEach(e=>{
+      if(!e) return;
+      e.addEventListener("change",ev=>{console.log("🟠 change",ev.target.id,ev.target.value);});
+      e.addEventListener("click",ev=>{console.log("🟣 click",ev.target.id);});
+    });
+  })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,246 @@
+{% extends "dashboard_base.html" %}
+{% block content %}
+<div class="logs-page-container">
+    <div class="logs-header header-with-action">
+        <h2>Visor de Logs del Sistema</h2>
+        <div class="header-buttons">
+            <a href="/admin/dashboard/logs" id="goto-actual-log-btn" class="button secondary-btn">Ir al Log Actual</a>
+            <form id="rotate-log-form" action="/admin/logs/rotate" method="post" style="display: inline;"><button type="submit" class="button">Crear Nuevo Log</button></form>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-body">
+            <form class="log-filters" id="log-filter-form" method="get" action="/admin/dashboard/logs">
+                <div class="filter-group"><label>Archivo de Log</label><select id="log-file-select" name="file">{% for file in log_files %}<option value="{{ file }}" {% if file == selected_file %}selected{% endif %} {% if 'Actual' in file %}class="actual-log-option"{% endif %}>{{ file }}</option>{% endfor %}</select></div>
+                <div class="filter-group"><label>Nivel</label><select id="log-level-select" name="level"><option value="ALL">Todos</option><option value="INFO">Info</option><option value="WARNING">Warning</option><option value="ERROR">Error</option></select></div>
+                <div class="filter-group filter-search"><label>Buscar</label><input type="text" name="search" placeholder="Texto a buscar..." value="{{ search_query or '' }}"></div>
+                <div class="filter-group"><button type="submit">Aplicar Filtros</button></div>
+                <div class="filter-group search-nav"><button type="button" id="search-prev-btn" disabled>&lt;</button><span id="search-counter">0 / 0</span><button type="button" id="search-next-btn" disabled>&gt;</button></div>
+            </form>
+            <div class="log-table-container">
+                <table class="log-table">
+                    <thead><tr><th>Timestamp</th><th>Nivel</th><th>Mensaje</th></tr></thead>
+                    <tbody>
+                        {% for log in logs %}
+                        <tr class="log-level-{{ log.level | lower }}">
+                            <td>{{ log.timestamp }}</td>
+                            <td><span class="log-level-badge">{{ log.level }}</span></td>
+                            <td><pre><code>{{ log.message | safe }}</code></pre></td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3">No se encontraron entradas de log.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ===================== TOAST (persistente entre recargas) =====================
+    function showToast(message, type = 'info', durationMs = 1200) {
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        setTimeout(() => { toast.classList.add('show'); }, 30);
+        setTimeout(() => {
+            toast.classList.remove('show');
+            toast.addEventListener('transitionend', () => toast.remove());
+        }, durationMs);
+    }
+    const TOAST_KEY = 'dicomproxy.logs.toast';
+    function persistToast(msg, type) {
+        try { sessionStorage.setItem(TOAST_KEY, JSON.stringify({msg, type: type||'info', exp: Date.now()+15000})); } catch(e) {}
+    }
+    function popPersistedToast() {
+        try {
+            const raw = sessionStorage.getItem(TOAST_KEY);
+            if (!raw) return;
+            sessionStorage.removeItem(TOAST_KEY);
+            const data = JSON.parse(raw||'{}');
+            if (!data.msg) return;
+            if (data.exp && Date.now() > data.exp) return;
+            showToast(data.msg, data.type||'info', 1200);
+        } catch(e) {}
+    }
+    document.addEventListener('DOMContentLoaded', popPersistedToast);
+
+    // ===================== MODAL PROPIO =====================
+    (function ensureModalCSS(){
+      if (document.getElementById('dp-modal-styles')) return;
+      const css = `
+      .dp-modal-backdrop{position:fixed;inset:0;background:rgba(2,6,23,.6);backdrop-filter:saturate(120%) blur(2px);display:flex;align-items:center;justify-content:center;z-index:9998;opacity:0;transition:opacity .15s ease}
+      .dp-modal-backdrop.show{opacity:1}
+      .dp-modal{background:#ffffff; color:#0f172a; border-radius:12px; width:min(520px,calc(100% - 32px)); box-shadow:0 20px 60px rgba(0,0,0,.35); border:1px solid #e5e7eb}
+      @media (prefers-color-scheme: dark){
+        .dp-modal{background:#111827; color:#e5e7eb; border-color:#223045}
+      }
+      .dp-modal-header{padding:14px 18px;border-bottom:1px solid #e5e7eb}
+      @media (prefers-color-scheme: dark){ .dp-modal-header{border-color:#223045} }
+      .dp-modal-title{margin:0;font-size:16px;font-weight:600}
+      .dp-modal-body{padding:16px 18px;font-size:14px;line-height:1.45}
+      .dp-modal-actions{display:flex;gap:10px;justify-content:flex-end;padding:14px 18px;border-top:1px solid #e5e7eb}
+      @media (prefers-color-scheme: dark){ .dp-modal-actions{border-color:#223045} }
+      .dp-btn{appearance:none;border:1px solid #223045;background:#0e1420;color:#e6e6e6;padding:8px 12px;border-radius:10px;cursor:pointer}
+      .dp-btn:hover{border-color:#5b9cf6}
+      .dp-btn-primary{background:#1d4ed8;border-color:#1d4ed8;color:#fff}
+      .dp-btn-ghost{background:transparent}
+      `;
+      const style = document.createElement('style'); style.id='dp-modal-styles'; style.textContent = css;
+      document.head.appendChild(style);
+    })();
+
+    function showNiceConfirm(message, title='Confirmación'){
+      return new Promise((resolve, reject)=>{
+        const backdrop = document.createElement('div');
+        backdrop.className = 'dp-modal-backdrop';
+        backdrop.innerHTML = `
+          <div class="dp-modal" role="dialog" aria-modal="true" aria-labelledby="dp-modal-title">
+            <div class="dp-modal-header"><h3 id="dp-modal-title" class="dp-modal-title">${title}</h3></div>
+            <div class="dp-modal-body"><p>${message}</p></div>
+            <div class="dp-modal-actions">
+              <button type="button" class="dp-btn dp-btn-ghost" id="dp-cancel">Cancelar</button>
+              <button type="button" class="dp-btn dp-btn-primary" id="dp-accept">Aceptar</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(backdrop);
+        requestAnimationFrame(()=>backdrop.classList.add('show'));
+
+        const acceptBtn = backdrop.querySelector('#dp-accept');
+        const cancelBtn = backdrop.querySelector('#dp-cancel');
+
+        const cleanup = () => {
+          backdrop.classList.remove('show');
+          backdrop.addEventListener('transitionend', ()=>backdrop.remove(), {once:true});
+        };
+
+        acceptBtn.addEventListener('click', ()=>{ cleanup(); resolve(true); }, {once:true});
+        cancelBtn.addEventListener('click', ()=>{ cleanup(); reject(false); }, {once:true});
+        backdrop.addEventListener('click', (e)=>{ if(e.target===backdrop){ cleanup(); reject(false); }});
+        document.addEventListener('keydown', function esc(e){
+          if(e.key==='Escape'){ cleanup(); reject(false); document.removeEventListener('keydown', esc); }
+        });
+      });
+    }
+
+    // ===================== NAVEGACIÓN DE BÚSQUEDA =====================
+    window.onload = () => {
+        const searchResults = document.querySelectorAll('.log-table mark');
+        const counterElement = document.getElementById('search-counter');
+        const prevBtn = document.getElementById('search-prev-btn');
+        const nextBtn = document.getElementById('search-next-btn');
+        let currentSearchIndex = -1;
+        if (!counterElement || !prevBtn || !nextBtn) return;
+        counterElement.textContent = `0 / ${searchResults.length}`;
+        if (searchResults.length === 0) { prevBtn.disabled = true; nextBtn.disabled = true; return; }
+        prevBtn.disabled = false; nextBtn.disabled = false;
+        const navigate = (direction) => {
+            if (currentSearchIndex > -1) searchResults[currentSearchIndex].classList.remove('current-match');
+            currentSearchIndex += direction;
+            if (currentSearchIndex >= searchResults.length) currentSearchIndex = 0;
+            if (currentSearchIndex < 0) currentSearchIndex = searchResults.length - 1;
+            const currentElement = searchResults[currentSearchIndex];
+            currentElement.classList.add('current-match');
+            currentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            counterElement.textContent = `${currentSearchIndex + 1} / ${searchResults.length}`;
+        };
+        nextBtn.onclick = () => navigate(1);
+        prevBtn.onclick = () => navigate(-1);
+    };
+
+    // ===================== Acciones =====================
+    const filterForm = document.getElementById('log-filter-form');
+    const selectFile  = document.getElementById('log-file-select');
+    const selectLevel = document.getElementById('log-level-select');
+    const inputSearch = document.querySelector('input[name="search"]');
+    const applyBtn    = (filterForm && filterForm.querySelector('button[type="submit"], input[type="submit"]')) || null;
+    const gotoActual  = document.getElementById('goto-actual-log-btn');
+
+    function buildUrlFromForm(form) {
+        const params = new URLSearchParams(new FormData(form));
+        return `${form.action}?${params.toString()}`;
+    }
+
+    // Acciones INMEDIATAS con toast persistente
+    if (selectFile) {
+        selectFile.addEventListener('change', (e) => {
+            const v = e.target.value || '(vacío)';
+            persistToast(`Archivo seleccionado: ${v}`, 'info');
+            if (filterForm && typeof filterForm.requestSubmit === 'function') {
+                filterForm.requestSubmit();
+            } else if (filterForm) {
+                window.location.href = buildUrlFromForm(filterForm);
+            }
+        }, { capture: true });
+    }
+    if (selectLevel) {
+        selectLevel.addEventListener('change', (e) => {
+            const v = e.target.value || 'Todos';
+            persistToast(`Nivel de log: ${v}`, 'info');
+            if (filterForm && typeof filterForm.requestSubmit === 'function') {
+                filterForm.requestSubmit();
+            } else if (filterForm) {
+                window.location.href = buildUrlFromForm(filterForm);
+            }
+        }, { capture: true });
+    }
+    if (inputSearch) {
+        inputSearch.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const v = (inputSearch.value || '').trim();
+                persistToast(`Búsqueda: ${v || '—'}`, 'info');
+                if (filterForm && typeof filterForm.requestSubmit === 'function') {
+                    e.preventDefault();
+                    filterForm.requestSubmit();
+                }
+            }
+        }, { capture: true });
+    }
+    if (applyBtn && filterForm) {
+        applyBtn.addEventListener('click', () => {
+            const f = filterForm.querySelector('#log-file-select');
+            const lv = filterForm.querySelector('#log-level-select');
+            const q = filterForm.querySelector('input[name="search"]');
+            const parts = [];
+            if (f && f.value) parts.push(`Archivo: ${f.value}`);
+            if (lv && lv.value) parts.push(`Nivel: ${lv.value}`);
+            if (q && q.value) parts.push(`Buscar: ${q.value}`);
+            const msg = parts.length ? `Aplicando filtros (${parts.join(' | ')})` : 'Aplicando filtros…';
+            persistToast(msg, 'info');
+        }, { capture: true });
+    }
+    if (gotoActual) {
+        gotoActual.addEventListener('click', () => {
+            persistToast('Cargando el log actual…', 'info');
+        }, { capture: true });
+    }
+
+    // ===================== Crear Nuevo Log con MODAL personalizado =====================
+    const rotateForm = document.getElementById('rotate-log-form');
+    if (rotateForm) {
+        rotateForm.addEventListener('submit', async function(event) {
+            event.preventDefault();
+            try {
+                const ok = await showNiceConfirm('¿Estás seguro de que quieres archivar el log actual y crear uno nuevo?', 'Crear Nuevo Log');
+                if (!ok) {
+                    showToast('Operación cancelada.', 'error', 1200);
+                    return;
+                }
+                const response = await fetch(event.target.action, { method: 'POST' });
+                if (!response.ok) {
+                    showToast('No se pudo crear el nuevo log.', 'error', 1600);
+                    return;
+                }
+                // Solo un toast VERDE (persistente tras recarga)
+                persistToast('Nuevo archivo de log solicitado.', 'success');
+                window.location.href = response.url;
+            } catch (e) {
+                showToast('Operación cancelada o fallida.', 'error', 1500);
+            }
+        });
+    }
+</script>
+{% endblock %}
